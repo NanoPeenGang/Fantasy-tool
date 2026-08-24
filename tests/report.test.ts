@@ -267,6 +267,35 @@ describe('generateCommissionersReport', () => {
     expect(result.body).toContain('93.5');
   });
 
+  it('drops the storyline pass rather than blowing a deadline', async () => {
+    // The report is written and verified by this point. Losing the whole
+    // invocation to a timeout would throw that away along with the API spend;
+    // skipping continuity costs one week of callbacks.
+    const generator = new ScriptedGenerator([ANGLES_RESPONSE, cleanDraft]);
+    const result = await generateCommissionersReport({
+      packet, storylines: EXISTING_STORYLINES, seasonAwardCounts: {},
+      heatCeiling: 'group_chat', voice: 'noir', managers: MANAGERS, generator,
+      deadline: Date.now() - 1,
+    });
+
+    expect(generator.calls).toHaveLength(2);
+    expect(result.storylinesSkipped).toBe(true);
+    expect(result.body).toContain('93.5');
+  });
+
+  it('runs the storyline pass when there is time left', async () => {
+    const generator = scripted(cleanDraft);
+    const result = await generateCommissionersReport({
+      packet, storylines: EXISTING_STORYLINES, seasonAwardCounts: {},
+      heatCeiling: 'group_chat', voice: 'noir', managers: MANAGERS, generator,
+      deadline: Date.now() + 60_000,
+    });
+
+    expect(generator.calls).toHaveLength(3);
+    expect(result.storylinesSkipped).toBe(false);
+    expect(result.storylines.updates).toHaveLength(1);
+  });
+
   it('skips the storyline pass when asked to', async () => {
     const generator = new ScriptedGenerator([ANGLES_RESPONSE, cleanDraft]);
     await generateCommissionersReport({

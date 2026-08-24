@@ -3,8 +3,11 @@ import { authorizeCron } from '@/lib/auth';
 import { refreshPlayerDictionary } from '@/lib/sleeper/players';
 
 export const dynamic = 'force-dynamic';
-/** The dictionary is ~10MB and the reduce walks every entry. */
-export const maxDuration = 120;
+/**
+ * The dictionary is ~10MB and the reduce walks every entry. 60s is the Hobby
+ * ceiling and is comfortable for this; it is the fan-out jobs that feel it.
+ */
+export const maxDuration = 60;
 
 /**
  * Daily player dictionary refresh.

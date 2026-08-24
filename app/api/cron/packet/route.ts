@@ -3,9 +3,10 @@ import { authorizeCron } from '@/lib/auth';
 import { getLeague, listLeagues } from '@/lib/db/queries';
 import { currentState } from '@/lib/jobs/ingest';
 import { buildAndStorePacket } from '@/lib/jobs/packet';
+import { FUNCTION_BUDGET_MS, TimeBudget } from '@/lib/jobs/budget';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 /**
  * Weekly stat packet computation.
@@ -45,8 +46,17 @@ async function run(request: Request) {
     : await listLeagues();
 
   const results: { leagueId: string; week: number; teams?: number; error?: string }[] = [];
+  const budget = new TimeBudget(FUNCTION_BUDGET_MS, 15_000);
+  let skipped = 0;
 
   for (const league of leagues) {
+    // Packet building is the most expensive job here — several Sleeper calls
+    // plus a league-wide solve — so it gets the widest headroom. Anything it
+    // cannot reach is rebuilt with ?leagueId=.
+    if (budget.exhausted()) {
+      skipped = leagues.length - results.length;
+      break;
+    }
     try {
       const packet = await buildAndStorePacket(league, week, { status: 'final' });
       results.push({ leagueId: league.id, week, teams: packet.teams.length });
@@ -59,5 +69,5 @@ async function run(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, week, results });
+  return NextResponse.json({ ok: true, week, skipped, elapsedMs: budget.elapsedMs(), results });
 }

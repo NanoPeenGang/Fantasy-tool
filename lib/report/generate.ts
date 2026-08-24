@@ -63,6 +63,12 @@ export type GenerateReportParams = {
   generator: Generator;
   /** Skip the storyline maintenance call, which the AAR path does not need. */
   updateStorylines?: boolean;
+  /**
+   * Epoch ms by which the pipeline should be done. Past it, the storyline
+   * pass is dropped rather than started — see below for why that is the right
+   * thing to shed under pressure.
+   */
+  deadline?: number;
 };
 
 export type GeneratedReport = {
@@ -72,6 +78,8 @@ export type GeneratedReport = {
   storylines: StorylineResponse;
   /** The draft before verification, kept for debugging a rising failure rate. */
   draft: string;
+  /** True when the storyline pass was dropped to stay inside the deadline. */
+  storylinesSkipped: boolean;
 };
 
 export async function generateCommissionersReport(
@@ -117,8 +125,15 @@ export async function generateCommissionersReport(
   });
 
   // --- Storyline maintenance ------------------------------------------------
+  // This is the pass to shed when time runs short. The report is already
+  // written and verified by this point; losing the whole invocation to a
+  // timeout would throw that away along with the API spend that bought it,
+  // whereas skipping continuity costs one week of callbacks and nothing else.
+  const outOfTime = params.deadline !== undefined && Date.now() >= params.deadline;
+  const runStorylines = params.updateStorylines !== false && !outOfTime;
+
   let storylineResponse: StorylineResponse = { updates: [], new_threads: [] };
-  if (params.updateStorylines !== false) {
+  if (runStorylines) {
     storylineResponse = await maintainStorylines({
       generator,
       packet,
@@ -127,7 +142,14 @@ export async function generateCommissionersReport(
     });
   }
 
-  return { body: checked.body, angles, factCheck: checked, storylines: storylineResponse, draft };
+  return {
+    body: checked.body,
+    angles,
+    factCheck: checked,
+    storylines: storylineResponse,
+    draft,
+    storylinesSkipped: outOfTime,
+  };
 }
 
 async function maintainStorylines(params: {

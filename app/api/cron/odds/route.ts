@@ -3,12 +3,18 @@ import { authorizeCron } from '@/lib/auth';
 import { getLeague, listLeagues } from '@/lib/db/queries';
 import { currentState } from '@/lib/jobs/ingest';
 import { tickOdds } from '@/lib/jobs/odds';
+import { FUNCTION_BUDGET_MS, TimeBudget } from '@/lib/jobs/budget';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 /**
- * The 60-second live odds tick.
+ * The live odds tick.
+ *
+ * Designed for a 60-second cadence. Vercel's Hobby plan will not run a cron
+ * more often than daily, so there the tick is driven by
+ * .github/workflows/odds-tick.yml at GitHub's 5-minute floor instead — a
+ * coarser curve, but a curve.
  *
  * Fans out across every connected league from one call. Each league costs one
  * Sleeper request per tick, which keeps a few thousand leagues comfortably
@@ -40,8 +46,17 @@ export async function GET(request: Request) {
     : await listLeagues();
 
   const results: { leagueId: string; matchups?: number; complete?: boolean; error?: string }[] = [];
+  const budget = new TimeBudget(FUNCTION_BUDGET_MS);
+  let skipped = 0;
 
   for (const league of leagues) {
+    // A tick that gets killed mid-fan-out loses every league after the one it
+    // was on, and leaves no record of where it stopped. Stopping short keeps
+    // the leagues already ticked and names the shortfall.
+    if (budget.exhausted()) {
+      skipped = leagues.length - results.length;
+      break;
+    }
     try {
       const tick = await tickOdds(league, week);
       results.push({
@@ -57,5 +72,12 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, week, leagues: results.length, results });
+  return NextResponse.json({
+    ok: true,
+    week,
+    leagues: results.length,
+    skipped,
+    elapsedMs: budget.elapsedMs(),
+    results,
+  });
 }

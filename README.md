@@ -99,7 +99,7 @@ Then open http://localhost:3000 and paste a Sleeper league ID — the long numbe
 in your league's Sleeper URL.
 
 ```bash
-npm test          # 234 tests, no database or API key needed
+npm test          # 236 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
 ```
@@ -116,15 +116,69 @@ npm run check     # both
 
 ### Deploying
 
-`vercel.json` carries the cron schedules. Two notes on it:
+**This ships configured for Vercel's Hobby plan**, which is more restrictive than
+the spec's ingestion design assumes. Three limits shape the config, and all three
+reject a deployment outright rather than degrading:
 
-- The 60-second odds tick needs minute-level cron (`* 17-23 * * 0`), which
-  requires a Vercel plan that allows it. On a plan limited to daily crons, drive
-  the tick from an external scheduler hitting `/api/cron/odds` instead.
-- Game-window schedules are in UTC and cover Sunday afternoon through Monday
-  night ET plus Thursday. Adjust for your league's actual habits.
+| Hobby limit | What it forces |
+|---|---|
+| 60s max function duration | Every `maxDuration` is 60. The spec's longer jobs are budgeted instead. |
+| 2 cron jobs per project | `/api/cron/players` and `/api/cron/leagues` are merged into `/api/cron/daily`. |
+| No cron more frequent than daily | The 60-second odds tick cannot be a Vercel cron here at all. |
 
-Set `CRON_SECRET` in production. Without it the cron routes accept anyone.
+So `vercel.json` carries exactly two crons: the daily refresh and the weekly
+packet build.
+
+**The odds tick runs from GitHub Actions instead**
+(`.github/workflows/odds-tick.yml`). Set two repository secrets:
+
+- `LEAGUEOPS_URL` — your deployment's base URL, no trailing slash
+- `CRON_SECRET` — the same value as the Vercel environment variable
+
+Be clear-eyed about what this costs: GitHub's scheduler has a five-minute floor
+and runs late under load, so you get a ~5-minute tick rather than a 60-second
+one. The swing chart still works — peak, comeback index, clinch and turning
+point are all computed from whatever ticks exist — but the curve is coarser and a
+turning point is attributed to a five-minute window rather than a one-minute one.
+For a bragging-rights instrument that is a fair trade; it is not the spec's
+design.
+
+#### Working inside a 60-second function
+
+Two jobs can genuinely exceed 60 seconds, and both handle it explicitly rather
+than being killed:
+
+- **Fan-out crons** (`/api/cron/odds`, `/api/cron/packet`, `/api/cron/daily`)
+  carry a `TimeBudget` and stop one league short of the ceiling, returning
+  `skipped` and `elapsedMs`. A killed invocation loses its work silently and
+  reports nothing; stopping short keeps what it did and says where it stopped.
+  Anything missed is rebuilt with `?leagueId=`.
+- **Report generation** takes a deadline and drops the storyline-maintenance
+  pass when it is close to it. That pass is the right thing to shed: the report
+  is already written and verified by then, so a timeout would throw away both the
+  output and the API spend that bought it, while skipping continuity costs one
+  week of callbacks.
+
+#### If you move to a plan with longer functions and minute-level crons
+
+1. Raise `maxDuration` to 300 on the cron and report routes, and
+   `FUNCTION_BUDGET_MS` in `lib/jobs/budget.ts` to match.
+2. Raise the generation deadline in `app/api/leagues/[leagueId]/report/route.ts`.
+3. Move the odds tick back into `vercel.json` at minute granularity and delete
+   the GitHub Actions workflow:
+
+   ```json
+   { "path": "/api/cron/odds", "schedule": "* 17-23 * * 0" }
+   ```
+
+4. Optionally split `/api/cron/daily` back into the `players` and `leagues`
+   routes, which still exist and are still individually callable.
+
+Game-window schedules are in UTC and cover Sunday afternoon through Monday night
+ET plus Thursday. Adjust for your league's actual habits.
+
+**Set `CRON_SECRET` in production.** Without it the cron routes accept anyone,
+including the GitHub Actions workflow's caller and everyone else.
 
 ---
 

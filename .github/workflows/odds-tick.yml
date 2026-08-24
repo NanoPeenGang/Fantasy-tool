@@ -1,0 +1,53 @@
+# Live odds tick.
+#
+# Vercel's Hobby plan caps a project at two cron jobs and will not run any of
+# them more often than daily, so the 60-second tick the odds engine is designed
+# around cannot be a Vercel cron there. This workflow drives it instead.
+#
+# Two honest caveats:
+#   - GitHub's scheduler has a five-minute floor and runs late under load, so
+#     this is a ~5-minute tick, not a 60-second one. The curve is coarser and
+#     the swing chart attributes turning points to a wider window.
+#   - Schedules are UTC and cover the usual NFL windows. Adjust to your league.
+#
+# On a Vercel plan that allows minute-level crons, delete this workflow and put
+# the tick back in vercel.json instead — see the README.
+name: Odds tick
+
+on:
+  schedule:
+    # Sunday 17:00-23:55 UTC (1pm-7pm ET) — the main slate.
+    - cron: '*/5 17-23 * * 0'
+    # Sunday night into Monday, and Monday night into Tuesday.
+    - cron: '*/5 0-4 * * 1,2'
+    # Thursday night into Friday.
+    - cron: '*/5 0-4 * * 5'
+  workflow_dispatch:
+
+concurrency:
+  group: odds-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the odds tick
+        env:
+          DEPLOY_URL: ${{ secrets.LEAGUEOPS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "LEAGUEOPS_URL secret is not set; nothing to call." >&2
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/tick.json -w '%{http_code}' \
+            --max-time 90 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${DEPLOY_URL}/api/cron/odds")
+          cat /tmp/tick.json
+          echo
+          if [ "$status" -ge 400 ]; then
+            echo "Tick failed with HTTP $status" >&2
+            exit 1
+          fi

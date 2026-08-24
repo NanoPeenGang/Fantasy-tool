@@ -4,7 +4,7 @@ import { listLeagues } from '@/lib/db/queries';
 import { connectLeague } from '@/lib/jobs/ingest';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 /**
  * Daily league metadata refresh: scoring settings, roster positions, users and

@@ -17,8 +17,14 @@ import { parseVoice } from '@/lib/report/voices';
 import { formatFor, type DeliveryTarget } from '@/lib/report/delivery';
 
 export const dynamic = 'force-dynamic';
-/** Three model passes over a full stat packet do not fit in a 10s budget. */
-export const maxDuration = 300;
+/**
+ * The Hobby ceiling. Three model passes over a full stat packet is genuinely
+ * tight inside it, so generation is given a deadline and drops the storyline
+ * pass rather than being killed with the report already written but unsaved.
+ * On a plan allowing longer functions, raise this to 300 and the deadline with
+ * it.
+ */
+export const maxDuration = 60;
 
 const Body = z.object({
   week: z.number().int().min(1).max(22),
@@ -79,6 +85,10 @@ export async function POST(
         roastOptDown: m.roast_opt_down,
       })),
       generator: new AnthropicGenerator(),
+      // Leave room to persist the report and the storylines after the model
+      // passes return. Losing a finished report to a timeout is the worst
+      // outcome here: it costs the API spend and shows the user nothing.
+      deadline: Date.now() + (maxDuration - 12) * 1000,
     });
 
     await saveReport({
