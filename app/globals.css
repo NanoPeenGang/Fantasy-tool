@@ -1,0 +1,308 @@
+/* LeagueOps design tokens. Dark by default — this is a thing people open on a
+   phone on a Sunday afternoon with games on. */
+
+:root {
+  --bg: #0b0c0e;
+  --surface: #131519;
+  --surface-2: #1a1d22;
+  --border: #262a31;
+  --text: #e8eaed;
+  --text-dim: #9aa1ab;
+  --text-faint: #676e78;
+
+  --accent: #4ade80;
+  --accent-dim: #22c55e;
+  --danger: #f87171;
+  --warn: #fbbf24;
+  --info: #60a5fa;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; }
+
+.shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 20px 80px;
+}
+
+/* --- masthead ----------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wordmark {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.wordmark span { color: var(--accent); }
+
+.masthead-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+
+.nav a {
+  padding: 6px 12px;
+  border-radius: 100px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+}
+
+.nav a:hover { color: var(--text); background: var(--surface); }
+.nav a[aria-current="page"] {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+/* --- headings ----------------------------------------------------------- */
+
+h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+h2 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 34px 0 12px;
+}
+h3 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+
+.lede { color: var(--text-dim); margin: 0 0 4px; max-width: 62ch; }
+
+/* --- cards -------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+.grid { display: grid; gap: 12px; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.grid-4 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+/* --- stat tiles --------------------------------------------------------- */
+
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.stat-value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat-note { font-size: 12px; color: var(--text-dim); }
+
+/* --- tables ------------------------------------------------------------- */
+
+.table-wrap { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+
+th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; }
+td.name { white-space: normal; min-width: 150px; }
+
+/* --- inline indicators -------------------------------------------------- */
+
+.up { color: var(--accent); }
+.down { color: var(--danger); }
+.dim { color: var(--text-dim); }
+.faint { color: var(--text-faint); }
+.mono { font-family: var(--mono); }
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.pill.good { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.pill.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+
+/* --- odds cards --------------------------------------------------------- */
+
+.odds-card { display: flex; flex-direction: column; gap: 12px; }
+
+.odds-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.odds-name { font-weight: 600; }
+.odds-line { font-family: var(--mono); font-size: 15px; }
+
+.probbar {
+  position: relative;
+  height: 6px;
+  border-radius: 100px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.probbar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  border-radius: 100px;
+}
+
+.odds-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-faint);
+  flex-wrap: wrap;
+}
+
+/* --- forms -------------------------------------------------------------- */
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+
+label { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+
+input[type="text"], select, textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  font: inherit;
+  width: 100%;
+}
+
+input:focus, select:focus { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
+
+button {
+  background: var(--accent);
+  color: #06210f;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 16px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button:hover { background: var(--accent-dim); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+button.secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* --- report ------------------------------------------------------------- */
+
+.report { max-width: 68ch; }
+.report h2 {
+  font-size: 13px;
+  color: var(--accent);
+  margin-top: 30px;
+}
+.report p { margin: 0 0 14px; }
+.report ul { margin: 0 0 14px; padding-left: 20px; }
+.report li { margin: 4px 0; }
+.report strong { color: #fff; }
+
+/* --- notices ------------------------------------------------------------ */
+
+.notice {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+}
+
+.notice strong { color: var(--text); }
+.notice.info { border-left-color: var(--info); }
+
+.empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-faint);
+}
+
+footer.site {
+  margin-top: 56px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-faint);
+}

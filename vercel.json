@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/players",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/leagues",
+      "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/odds",
+      "schedule": "* 17-23 * * 0"
+    },
+    {
+      "path": "/api/cron/odds",
+      "schedule": "* 0-4 * * 1"
+    },
+    {
+      "path": "/api/cron/odds",
+      "schedule": "* 0-4 * * 2,5"
+    },
+    {
+      "path": "/api/cron/packet",
+      "schedule": "0 12 * * 2"
+    }
+  ]
+}

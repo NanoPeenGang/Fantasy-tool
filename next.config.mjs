@@ -1,12 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // pg must not be bundled — it loads native-ish internals the bundler mangles.
+  // The player dictionary boundary is enforced separately, by `server-only`
+  // imports in lib/sleeper/players.ts.
   serverExternalPackages: ['pg'],
-  experimental: {
-    // The player dictionary is ~10MB. Nothing that touches it may be bundled
-    // for the client; this keeps the boundary loud if someone tries.
-    typedRoutes: false,
-  },
 };
 
 export default nextConfig;
