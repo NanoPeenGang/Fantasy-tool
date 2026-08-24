@@ -84,8 +84,6 @@ export async function connectLeague(
 export type WeekSnapshot = {
   matchups: MatchupWeek[];
   players: Record<string, PlayerRef>;
-  /** True once every matchup in the week has gone final. */
-  allFinal: boolean;
 };
 
 /**
@@ -179,7 +177,7 @@ export async function fetchWeek(
     }
   }
 
-  return { matchups, players, allFinal: options.status === 'final' };
+  return { matchups, players };
 }
 
 function toTeamWeek(

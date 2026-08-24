@@ -397,11 +397,21 @@ player props are the sharpest publicly available projection source — real mone
 moves them — but they cost money, add a vendor dependency, and cover only ~150
 players a week. That is an upgrade path, not v1.
 
-**Game clock data.** The live odds split needs `game_pct_elapsed` per NFL team.
-Without it `tickOdds` treats any player with points on the board as half-elapsed
-and everyone else as pre-game — deliberately conservative, since it never claims
-a game is further along than we know. Supplying real game progress is the single
-biggest quality win available to the live board.
+**NFL schedule data.** Sleeper exposes neither the fixture list nor a game clock,
+and two things want them. Both are options on `tickOdds`, so wiring in any
+schedule source turns them on without touching the engine:
+
+- `gameProgress` (team → 0..1) drives the live banked-plus-remaining split.
+  Without it `tickOdds` treats any player with points on the board as
+  half-elapsed and everyone else as pre-game — deliberately conservative, since
+  it never claims a game is further along than we know.
+- `nflOpponents` (team → opponent) is what lets the two **cross-team correlation
+  tiers** fire at all. The engine implements the shootout effect and the
+  defense-versus-opposing-offense tier and the tests cover them, but with no
+  fixture list every cross-team pair looks unrelated in production and those
+  tiers silently contribute nothing.
+
+Supplying these is the cheapest real accuracy win available to the live board.
 
 **The war room's live half.** Tendency mining, run detection and survival odds are
 implemented and tested; the live board, tier cliffs and 5-second draft sync are

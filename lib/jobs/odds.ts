@@ -34,6 +34,14 @@ export type TickOptions = {
    * than we know it to be.
    */
   gameProgress?: Record<string, number>;
+  /**
+   * This week's NFL fixtures as team -> opponent. Sleeper does not expose the
+   * schedule, and without it the two cross-team correlation tiers (the shootout
+   * effect, and a defense against the offense it faces) cannot fire — the
+   * engine supports them, but every pair looks unrelated. Supplying this is a
+   * cheap, real accuracy win; see the README.
+   */
+  nflOpponents?: Record<string, string>;
   now?: Date;
 };
 
@@ -53,8 +61,8 @@ export async function tickOdds(
   for (const matchup of snapshot.matchups) {
     if (!matchup.b) continue;
 
-    const startersA = toStarterStates(matchup.a, snapshot.players, projections, options.gameProgress);
-    const startersB = toStarterStates(matchup.b, snapshot.players, projections, options.gameProgress);
+    const startersA = toStarterStates(matchup.a, snapshot.players, projections, options);
+    const startersB = toStarterStates(matchup.b, snapshot.players, projections, options);
 
     const finished = [...startersA, ...startersB].every((s) => s.gameStatus === 'final');
     if (!finished) allFinal = false;
@@ -127,8 +135,9 @@ export function toStarterStates(
   team: TeamWeek,
   players: Record<string, PlayerRef>,
   projections: Record<string, number>,
-  gameProgress?: Record<string, number>,
+  context: { gameProgress?: Record<string, number>; nflOpponents?: Record<string, string> } = {},
 ): StarterState[] {
+  const { gameProgress, nflOpponents } = context;
   const states: StarterState[] = [];
 
   for (const playerId of team.starters) {
@@ -157,7 +166,7 @@ export function toStarterStates(
       actual,
       gameStatus,
       gamePctElapsed,
-      opponentTeam: null,
+      opponentTeam: player.team ? nflOpponents?.[player.team] ?? null : null,
     });
   }
 
