@@ -48,6 +48,23 @@ describe('buildStatPacket', () => {
       expect(dave?.coachingEfficiency).toBeCloseTo(93.5 / 114.4, 4);
     });
 
+    it('carries the bench regret detail the recap and AAR quote', () => {
+      const dave = packet().teams.find((t) => t.manager === 'Dave');
+      const worst = dave?.benchRegret[0];
+      expect(worst).toMatchObject({
+        player: 'Dalton Kincaid',
+        points: 24.1,
+        replacing: 'Cade Otton',
+        replacingPoints: 3.2,
+        delta: 20.9,
+      });
+    });
+
+    it('leaves bench regret empty for a manager with nothing to regret', () => {
+      const kim = packet().teams.find((t) => t.manager === 'Kim');
+      expect(kim?.benchRegret).toEqual([]);
+    });
+
     it('gives a manager who started their best lineup full efficiency', () => {
       const kim = packet().teams.find((t) => t.manager === 'Kim');
       expect(kim?.coachingEfficiency).toBe(1);
@@ -58,7 +75,7 @@ describe('buildStatPacket', () => {
       const sam = packet().teams.find((t) => t.manager === 'Sam');
       // Sam is 3-0 head to head across the three fixture weeks.
       expect(sam?.record).toEqual({ w: 3, l: 0, t: 0 });
-      expect(sam?.allPlay.w + (sam?.allPlay.l ?? 0)).toBe(9);
+      expect((sam?.allPlay.w ?? 0) + (sam?.allPlay.l ?? 0)).toBe(9);
     });
 
     it('flags the lucky team with a positive luck index', () => {

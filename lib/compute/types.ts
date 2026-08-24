@@ -90,6 +90,18 @@ export type OddsSnapshot = OddsLine & {
 
 export type AllPlayRecord = { w: number; l: number; t: number };
 
+/** One legal swap the manager could have made, with what it was worth. */
+export type BenchRegret = {
+  player: string;
+  playerId: string;
+  points: number;
+  /** The started player this swap displaces, or null for an empty slot. */
+  replacing: string | null;
+  replacingPoints: number;
+  delta: number;
+  slot: string;
+};
+
 export type SeasonTeamLine = {
   managerId: string;
   manager: string;
@@ -99,6 +111,14 @@ export type SeasonTeamLine = {
   optimal: number;
   coachingEfficiency: number;
   benchPointsLeft: number;
+  /**
+   * Worst swaps first. The recap and the AAR both quote these directly ("started
+   * a tight end who produced 3.2 while 24.1 rotted on the bench"), so the
+   * player-level numbers behind a coaching claim have to live in the packet —
+   * otherwise the fact-check pass has nothing to verify them against and cuts
+   * the best line in the report.
+   */
+  benchRegret: BenchRegret[];
   allPlay: AllPlayRecord;
   record: { w: number; l: number; t: number };
   pf: number;
