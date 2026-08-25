@@ -99,7 +99,7 @@ Then open http://localhost:3000 and paste a Sleeper league ID — the long numbe
 in your league's Sleeper URL.
 
 ```bash
-npm test          # 243 tests, no database or API key needed
+npm test          # 260 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
 
@@ -161,12 +161,25 @@ tracing or the runtime working directory. It is the single source of truth.
 
 **On connection-string names:** the Vercel and Neon integrations do not agree on
 one, and which you get depends on how the database was attached. The app accepts
-`DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED`
-and `POSTGRES_URL_NON_POOLING`, in that order. Reading only `DATABASE_URL` meant
-a correctly-connected database could report itself as "not configured".
+`DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED`,
+`POSTGRES_URL_NON_POOLING`, `POSTGRES_URL_NO_SSL`, `NEON_DATABASE_URL` and
+`NEON_POSTGRES_URL`, in that order. Failing that it assembles one from discrete
+parts (`PGHOST`/`PGUSER`/`PGPASSWORD`/`PGDATABASE`, or their `POSTGRES_*`
+spellings), which some setups have instead of any URL at all. TLS is required by
+default there, overridable with `PGSSLMODE`.
 
-Note that attaching a database in Vercel does not update a running deployment —
-**redeploy** so the new environment variable is picked up.
+When nothing resolves, the setup banner and `/api/health` list the **names** of
+every database-shaped variable the runtime does have — never their values. That
+distinguishes the two very different failures: an unrecognised name means the
+resolver needs widening, while an empty list means the variable never reached the
+deployment, which is usually a missing redeploy or a variable scoped to the wrong
+environment.
+
+**Attaching a database in Vercel does not update a running deployment.** Vercel
+snapshots environment variables into a deployment when it is built, so an app
+that was deployed before the database was attached still has nothing. Redeploy
+after attaching, and check the variable is scoped to Production — one scoped only
+to Development or Preview is invisible to the production deployment.
 
 ### Deploying
 
@@ -467,7 +480,7 @@ lib/
   warroom/     draft tendency mining, run detection
   jobs/        ingestion, packet build, odds tick
   db/          schema (as TS), pool, repository, status probe
-tests/         243 unit tests + 26 DB integration tests, fixtures under tests/fixtures
+tests/         260 unit tests + 26 DB integration tests, fixtures under tests/fixtures
 ```
 
 Everything in `lib/compute` is a pure function over plain data — no database, no

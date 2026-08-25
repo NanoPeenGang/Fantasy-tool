@@ -103,9 +103,37 @@ function SetupNotice({ status }: { status: Awaited<ReturnType<typeof databaseSta
   if (!status.configured) {
     return (
       <div className="notice" style={{ marginTop: 22 }}>
-        <strong>No database attached.</strong> Add a Postgres database (Neon or Vercel
-        Postgres) to the project, then redeploy so the app picks up the environment
-        variable. Locally, set <code>DATABASE_URL</code> in <code>.env.local</code>.
+        <strong>No database connection string reached this deployment.</strong>{' '}
+        {status.seenEnvVars.length > 0 ? (
+          <>
+            The runtime does have these database-shaped variables, none of which is a
+            connection string this app recognises:
+            <div className="mono" style={{ fontSize: 12, margin: '8px 0' }}>
+              {status.seenEnvVars.join(', ')}
+            </div>
+          </>
+        ) : (
+          <>
+            The runtime has <strong>no</strong> database variables at all — not even a
+            partial one. That points at the variable never reaching this deployment rather
+            than at a naming mismatch.
+          </>
+        )}
+        <div style={{ marginTop: 10 }}>
+          Two things to check, in this order:
+          <ol style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+            <li>
+              <strong>Redeploy after attaching the database.</strong> Vercel snapshots
+              environment variables into a deployment when it is built. Attaching Neon does
+              not change a deployment that already exists, so the running one still has
+              nothing.
+            </li>
+            <li>
+              <strong>Check the variable is set for Production.</strong> A variable scoped
+              only to Development or Preview is invisible to the production deployment.
+            </li>
+          </ol>
+        </div>
       </div>
     );
   }

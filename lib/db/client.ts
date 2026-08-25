@@ -19,14 +19,58 @@ const CONNECTION_ENV_VARS = [
   'DATABASE_URL_UNPOOLED',
   'POSTGRES_URL_NON_POOLING',
   'POSTGRES_URL_NO_SSL',
+  'NEON_DATABASE_URL',
+  'NEON_POSTGRES_URL',
 ] as const;
+
+/**
+ * Neon and Vercel Postgres also export the connection as discrete parts, and
+ * some setups end up with those and no URL at all. Assembling one from the parts
+ * is the difference between "no database attached" and a working app, so it is
+ * worth the twenty lines.
+ */
+function connectionFromParts(): { url: string; source: string } | null {
+  const host = process.env.PGHOST ?? process.env.POSTGRES_HOST;
+  const user = process.env.PGUSER ?? process.env.POSTGRES_USER;
+  const password = process.env.PGPASSWORD ?? process.env.POSTGRES_PASSWORD;
+  const database = process.env.PGDATABASE ?? process.env.POSTGRES_DATABASE;
+  if (!host || !user || !database) return null;
+
+  const port = process.env.PGPORT ?? '5432';
+  const auth = password
+    ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
+    : encodeURIComponent(user);
+  // These parts carry no sslmode of their own. Default to require, because the
+  // hosted providers that set them all mandate TLS, but honour PGSSLMODE so a
+  // local server without TLS is still reachable.
+  const sslmode = process.env.PGSSLMODE ?? 'require';
+  return {
+    url: `postgres://${auth}@${host}:${port}/${encodeURIComponent(database)}?sslmode=${encodeURIComponent(sslmode)}`,
+    source: 'PGHOST/PGUSER/PGDATABASE',
+  };
+}
 
 export function resolveConnection(): { url: string; source: string } | null {
   for (const name of CONNECTION_ENV_VARS) {
     const value = process.env[name];
     if (value && value.trim() !== '') return { url: value.trim(), source: name };
   }
-  return null;
+  return connectionFromParts();
+}
+
+/**
+ * Names — never values — of environment variables that look database-related.
+ *
+ * When nothing resolves, the only useful question is "what does the runtime
+ * actually have?". Printing the names answers it immediately: an unrecognised
+ * name means the resolver needs widening, and an empty list means the variable
+ * never reached this deployment at all, which is a completely different fix.
+ */
+export function databaseEnvVarNames(): string[] {
+  return Object.keys(process.env)
+    .filter((name) => /^(DATABASE|POSTGRES|PG|NEON)/.test(name))
+    .filter((name) => (process.env[name] ?? '').trim() !== '')
+    .sort();
 }
 
 /**
@@ -103,6 +147,8 @@ export type DatabaseStatus = {
   migrated: boolean;
   missingTables: string[];
   error: string | null;
+  /** Names of database-shaped variables present in the runtime. Never values. */
+  seenEnvVars: string[];
 };
 
 /**
@@ -119,6 +165,7 @@ export async function databaseStatus(): Promise<DatabaseStatus> {
     return {
       configured: false, source: null, reachable: false,
       migrated: false, missingTables: REQUIRED_TABLES, error: null,
+      seenEnvVars: databaseEnvVarNames(),
     };
   }
 
@@ -138,6 +185,7 @@ export async function databaseStatus(): Promise<DatabaseStatus> {
       migrated: missing.length === 0,
       missingTables: missing,
       error: null,
+      seenEnvVars: databaseEnvVarNames(),
     };
   } catch (error) {
     return {
@@ -147,6 +195,7 @@ export async function databaseStatus(): Promise<DatabaseStatus> {
       migrated: false,
       missingTables: REQUIRED_TABLES,
       error: error instanceof Error ? error.message : 'Could not reach the database.',
+      seenEnvVars: databaseEnvVarNames(),
     };
   }
 }
