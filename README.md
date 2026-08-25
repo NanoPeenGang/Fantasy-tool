@@ -99,7 +99,7 @@ Then open http://localhost:3000 and paste a Sleeper league ID — the long numbe
 in your league's Sleeper URL.
 
 ```bash
-npm test          # 260 tests, no database or API key needed
+npm test          # 268 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
 
@@ -160,7 +160,11 @@ that the migration can run from a serverless function without depending on file
 tracing or the runtime working directory. It is the single source of truth.
 
 **On connection-string names:** the Vercel and Neon integrations do not agree on
-one, and which you get depends on how the database was attached. The app accepts
+one, and which you get depends on how the database was attached. Vercel's storage
+integrations also offer an *environment variables prefix*, and Neon's flow sets
+one by default — so the variable is often `database_DATABASE_URL` rather than
+`DATABASE_URL`. Every canonical name below is matched both exactly and as a
+`<prefix>_<name>` suffix, case-insensitively. The app accepts
 `DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED`,
 `POSTGRES_URL_NON_POOLING`, `POSTGRES_URL_NO_SSL`, `NEON_DATABASE_URL` and
 `NEON_POSTGRES_URL`, in that order. Failing that it assembles one from discrete
@@ -480,7 +484,7 @@ lib/
   warroom/     draft tendency mining, run detection
   jobs/        ingestion, packet build, odds tick
   db/          schema (as TS), pool, repository, status probe
-tests/         260 unit tests + 26 DB integration tests, fixtures under tests/fixtures
+tests/         268 unit tests + 26 DB integration tests, fixtures under tests/fixtures
 ```
 
 Everything in `lib/compute` is a pure function over plain data — no database, no

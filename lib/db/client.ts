@@ -24,36 +24,66 @@ const CONNECTION_ENV_VARS = [
 ] as const;
 
 /**
+ * Look up a canonical variable name, allowing for a prefix.
+ *
+ * Vercel's storage integrations offer an "environment variables prefix" when you
+ * attach a database, and Neon's flow sets one by default — the result is
+ * `database_DATABASE_URL` rather than `DATABASE_URL`. An exact-name lookup finds
+ * nothing, and the database looks unattached while sitting right there in the
+ * dashboard. So: exact match first, then any variable whose name ends with
+ * `_<canonical>`, compared case-insensitively because the prefix is lowercase
+ * while the rest is not.
+ *
+ * Matching on a suffix rather than a substring keeps the distinctions that
+ * matter: `database_DATABASE_URL_UNPOOLED` does not end with `DATABASE_URL`, so
+ * the pooled and direct endpoints stay separate.
+ */
+function lookupEnv(canonical: string): { value: string; source: string } | null {
+  const exact = process.env[canonical];
+  if (exact && exact.trim() !== '') return { value: exact.trim(), source: canonical };
+
+  const suffix = `_${canonical}`.toLowerCase();
+  const match = Object.keys(process.env)
+    .filter((key) => key.toLowerCase().endsWith(suffix))
+    .filter((key) => (process.env[key] ?? '').trim() !== '')
+    // Deterministic when an integration sets more than one prefix.
+    .sort()[0];
+
+  if (!match) return null;
+  return { value: (process.env[match] as string).trim(), source: match };
+}
+
+/**
  * Neon and Vercel Postgres also export the connection as discrete parts, and
  * some setups end up with those and no URL at all. Assembling one from the parts
  * is the difference between "no database attached" and a working app, so it is
  * worth the twenty lines.
  */
 function connectionFromParts(): { url: string; source: string } | null {
-  const host = process.env.PGHOST ?? process.env.POSTGRES_HOST;
-  const user = process.env.PGUSER ?? process.env.POSTGRES_USER;
-  const password = process.env.PGPASSWORD ?? process.env.POSTGRES_PASSWORD;
-  const database = process.env.PGDATABASE ?? process.env.POSTGRES_DATABASE;
+  const host = lookupEnv('PGHOST') ?? lookupEnv('POSTGRES_HOST');
+  const user = lookupEnv('PGUSER') ?? lookupEnv('POSTGRES_USER');
+  const password = lookupEnv('PGPASSWORD') ?? lookupEnv('POSTGRES_PASSWORD');
+  const database = lookupEnv('PGDATABASE') ?? lookupEnv('POSTGRES_DATABASE');
   if (!host || !user || !database) return null;
 
-  const port = process.env.PGPORT ?? '5432';
+  const port = lookupEnv('PGPORT')?.value ?? '5432';
   const auth = password
-    ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
-    : encodeURIComponent(user);
+    ? `${encodeURIComponent(user.value)}:${encodeURIComponent(password.value)}`
+    : encodeURIComponent(user.value);
   // These parts carry no sslmode of their own. Default to require, because the
   // hosted providers that set them all mandate TLS, but honour PGSSLMODE so a
   // local server without TLS is still reachable.
-  const sslmode = process.env.PGSSLMODE ?? 'require';
+  const sslmode = lookupEnv('PGSSLMODE')?.value ?? 'require';
   return {
-    url: `postgres://${auth}@${host}:${port}/${encodeURIComponent(database)}?sslmode=${encodeURIComponent(sslmode)}`,
-    source: 'PGHOST/PGUSER/PGDATABASE',
+    url: `postgres://${auth}@${host.value}:${port}/${encodeURIComponent(database.value)}?sslmode=${encodeURIComponent(sslmode)}`,
+    source: `${host.source}/${user.source}/${database.source}`,
   };
 }
 
 export function resolveConnection(): { url: string; source: string } | null {
   for (const name of CONNECTION_ENV_VARS) {
-    const value = process.env[name];
-    if (value && value.trim() !== '') return { url: value.trim(), source: name };
+    const found = lookupEnv(name);
+    if (found) return { url: found.value, source: found.source };
   }
   return connectionFromParts();
 }
@@ -65,10 +95,16 @@ export function resolveConnection(): { url: string; source: string } | null {
  * actually have?". Printing the names answers it immediately: an unrecognised
  * name means the resolver needs widening, and an empty list means the variable
  * never reached this deployment at all, which is a completely different fix.
+ *
+ * This deliberately matches anywhere in the name and ignores case. An earlier
+ * version anchored to the start and was case-sensitive, so it reported an empty
+ * list for a deployment whose variables were all prefixed — the diagnostic
+ * confidently pointed away from the actual problem, which is worse than having
+ * no diagnostic at all.
  */
 export function databaseEnvVarNames(): string[] {
   return Object.keys(process.env)
-    .filter((name) => /^(DATABASE|POSTGRES|PG|NEON)/.test(name))
+    .filter((name) => /(database|postgres|neon|pghost|pguser|pgpassword|pgport|pgsslmode)/i.test(name))
     .filter((name) => (process.env[name] ?? '').trim() !== '')
     .sort();
 }

@@ -114,7 +114,9 @@ describe('resolveConnection', () => {
       process.env.POSTGRES_USER = 'u';
       process.env.POSTGRES_DATABASE = 'd';
       const { resolveConnection } = await load();
-      expect(resolveConnection()?.source).toBe('PGHOST/PGUSER/PGDATABASE');
+      // The source names the variables actually read, so a reader can go and
+      // look at them, rather than a canonical label that may not exist.
+      expect(resolveConnection()?.source).toBe('POSTGRES_HOST/POSTGRES_USER/POSTGRES_DATABASE');
     });
 
     it('does not guess from an incomplete set of parts', async () => {
@@ -130,6 +132,84 @@ describe('resolveConnection', () => {
       process.env.PGDATABASE = 'd';
       const { resolveConnection } = await load();
       expect(resolveConnection()?.source).toBe('DATABASE_URL');
+    });
+  });
+
+
+  /**
+   * Vercel's storage integrations offer an "environment variables prefix" when
+   * you attach a database, and Neon's flow sets one by default. These are the
+   * exact names that flow produces.
+   */
+  describe('prefixed variables, as the Vercel Neon integration writes them', () => {
+    it('finds a prefixed DATABASE_URL', async () => {
+      process.env.database_DATABASE_URL = 'postgres://neon/db?sslmode=require';
+      const { resolveConnection } = await load();
+      expect(resolveConnection()).toEqual({
+        url: 'postgres://neon/db?sslmode=require',
+        source: 'database_DATABASE_URL',
+      });
+    });
+
+    it('keeps the priority order across prefixed names', async () => {
+      process.env.database_POSTGRES_URL_NO_SSL = 'postgres://nossl/db';
+      process.env.database_DATABASE_URL = 'postgres://pooled/db';
+      const { resolveConnection } = await load();
+      expect(resolveConnection()?.url).toBe('postgres://pooled/db');
+    });
+
+    it('does not confuse the pooled and unpooled endpoints', async () => {
+      process.env.database_DATABASE_URL_UNPOOLED = 'postgres://direct/db';
+      process.env.database_DATABASE_URL = 'postgres://pooled/db';
+      const { resolveConnection } = await load();
+      expect(resolveConnection()?.source).toBe('database_DATABASE_URL');
+    });
+
+    it('reports the real variable name, not the canonical one', async () => {
+      process.env.MYAPP_POSTGRES_URL = 'postgres://x/y';
+      const { resolveConnection } = await load();
+      // Naming the actual variable is what makes the diagnostic actionable.
+      expect(resolveConnection()?.source).toBe('MYAPP_POSTGRES_URL');
+    });
+
+    it('prefers an unprefixed variable over a prefixed one', async () => {
+      process.env.DATABASE_URL = 'postgres://plain/db';
+      process.env.database_DATABASE_URL = 'postgres://prefixed/db';
+      const { resolveConnection } = await load();
+      expect(resolveConnection()?.source).toBe('DATABASE_URL');
+    });
+
+    it('assembles from prefixed discrete parts', async () => {
+      process.env.database_PGHOST = 'ep-x.neon.tech';
+      process.env.database_PGUSER = 'owner';
+      process.env.database_PGDATABASE = 'neondb';
+      const { resolveConnection } = await load();
+      const connection = resolveConnection();
+      expect(connection?.url).toContain('ep-x.neon.tech');
+      expect(connection?.source).toContain('database_PGHOST');
+    });
+
+    it('is not fooled by a Neon Auth URL, which is not a Postgres connection', async () => {
+      process.env.database_NEON_AUTH_BASE_URL = 'https://api.stack-auth.com';
+      const { resolveConnection } = await load();
+      expect(resolveConnection()).toBeNull();
+    });
+
+    /**
+     * The regression that sent this whole investigation the wrong way: the
+     * diagnostic reported an empty list for a deployment whose variables were
+     * all prefixed, which pointed confidently away from the real problem.
+     */
+    it('reports prefixed names in the diagnostic', async () => {
+      process.env.database_DATABASE_URL = 'postgres://x/y';
+      process.env.database_PGDATABASE = 'neondb';
+      process.env.database_NEON_AUTH_BASE_URL = 'https://x';
+      const { databaseEnvVarNames } = await load();
+      expect(databaseEnvVarNames()).toEqual([
+        'database_DATABASE_URL',
+        'database_NEON_AUTH_BASE_URL',
+        'database_PGDATABASE',
+      ]);
     });
   });
 
