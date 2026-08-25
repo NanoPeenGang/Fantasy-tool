@@ -26,3 +26,31 @@ export function authorizeCron(request: Request): NextResponse | null {
 export function isAuthConfigured(): boolean {
   return Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 }
+
+export type MigrateAccess = 'bootstrap' | 'authorized' | 'denied';
+
+/**
+ * Who may create the schema.
+ *
+ * The bootstrap case is the interesting one: while the database has no schema,
+ * the migration runs without a secret. That is a deliberate, bounded exception,
+ * not an oversight. The only thing the call can do in that state is create empty
+ * tables on an empty database — it cannot read anything, because there is
+ * nothing to read, and it cannot destroy anything, because every statement is
+ * additive. The window closes the instant it succeeds.
+ *
+ * The alternative is worse: someone who has just attached a database and has not
+ * yet set CRON_SECRET would have no way to finish setup from the browser, which
+ * is exactly the dead end this whole route exists to remove.
+ *
+ * Once the schema exists, the secret is required like any other admin write.
+ */
+export function decideMigrateAccess(params: {
+  secret: string | undefined;
+  authorization: string | null;
+  migrated: boolean;
+}): MigrateAccess {
+  if (!params.migrated) return 'bootstrap';
+  if (!params.secret) return 'authorized';
+  return params.authorization === `Bearer ${params.secret}` ? 'authorized' : 'denied';
+}

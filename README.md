@@ -99,7 +99,7 @@ Then open http://localhost:3000 and paste a Sleeper league ID — the long numbe
 in your league's Sleeper URL.
 
 ```bash
-npm test          # 236 tests, no database or API key needed
+npm test          # 243 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
 
@@ -135,8 +135,8 @@ it), whether the database is reachable, and whether the schema exists. It return
 503 until all three are true, and names the single next step. It reveals no
 secrets — only the *name* of the variable a value came from.
 
-To create the schema on a deployed app, where there is no shell to run
-`npm run db:migrate` from:
+The setup banner on the home page offers a **Create the schema** button that does
+this in one click. Or, from a shell:
 
 ```bash
 curl -X POST https://your-app.vercel.app/api/admin/migrate \
@@ -144,9 +144,16 @@ curl -X POST https://your-app.vercel.app/api/admin/migrate \
 ```
 
 Idempotent and additive — it creates tables and types that do not exist and
-touches nothing else, so re-running it is safe. It is guarded by `CRON_SECRET`;
-if you have not set one yet, the route is open, which is another reason to set
-it.
+touches nothing else, so re-running it is safe.
+
+**On the bootstrap window:** while the database has no schema this route runs
+without a secret, and the button relies on that. It is a deliberate, bounded
+exception — in that state the call can only create empty tables on an empty
+database, since there is nothing to read and every statement is additive — and
+the window closes the instant it succeeds. Afterwards `CRON_SECRET` is required
+like any other admin write. Without the exception, anyone who attached a
+database before setting a secret would have no way to finish setup from the
+browser, which is the dead end this route exists to remove.
 
 The schema lives in `lib/db/schema.ts` as a string rather than a `.sql` file, so
 that the migration can run from a serverless function without depending on file
@@ -460,7 +467,7 @@ lib/
   warroom/     draft tendency mining, run detection
   jobs/        ingestion, packet build, odds tick
   db/          schema (as TS), pool, repository, status probe
-tests/         236 unit tests + 26 DB integration tests, fixtures under tests/fixtures
+tests/         243 unit tests + 26 DB integration tests, fixtures under tests/fixtures
 ```
 
 Everything in `lib/compute` is a pure function over plain data — no database, no

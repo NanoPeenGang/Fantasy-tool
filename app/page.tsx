@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { databaseStatus } from '@/lib/db/client';
 import { listLeagues } from '@/lib/db/queries';
-import { ConnectForm } from './connect-form';
+import { ConnectForm, type SetupState } from './connect-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,14 @@ export default async function HomePage() {
   const status = await databaseStatus();
   const ready = status.configured && status.reachable && status.migrated;
   const leagues = ready ? await listLeagues().catch(() => []) : [];
+
+  const setup: SetupState = !status.configured
+    ? 'not_configured'
+    : !status.reachable
+      ? 'unreachable'
+      : !status.migrated
+        ? 'not_migrated'
+        : 'ready';
 
   return (
     <main>
@@ -25,7 +33,7 @@ export default async function HomePage() {
       {!ready && <SetupNotice status={status} />}
 
       <div className="card" style={{ marginTop: 22, maxWidth: 460 }}>
-        <ConnectForm disabled={!ready} />
+        <ConnectForm setup={setup} />
       </div>
 
       {leagues.length > 0 && (

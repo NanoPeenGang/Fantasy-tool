@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeCron } from '@/lib/auth';
+import { decideMigrateAccess } from '@/lib/auth';
 import { applySchema, databaseStatus, isDatabaseConfigured } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
@@ -8,18 +8,14 @@ export const maxDuration = 60;
 /**
  * Apply the schema to the connected database.
  *
- * A deployed app has no shell, so `npm run db:migrate` is not reachable once the
+ * A deployed app has no shell, so `npm run db:migrate` is unreachable once the
  * database lives in Vercel or Neon rather than on a laptop. This route is the
- * production path for the same operation.
+ * production path for the same operation, and it is what the setup banner calls.
  *
- * Guarded by CRON_SECRET, using the same check as the cron routes: it is an
- * administrative write, and while every statement is idempotent and additive —
- * nothing here drops or truncates — it should still not be open to the internet.
+ * Access rules live in `decideMigrateAccess` — an unmigrated database can be
+ * bootstrapped without a secret; a migrated one cannot.
  */
 export async function POST(request: Request) {
-  const denied = authorizeCron(request);
-  if (denied) return denied;
-
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       { ok: false, error: 'No Postgres connection string is set. Attach a database first.' },
@@ -27,10 +23,30 @@ export async function POST(request: Request) {
     );
   }
 
+  const before = await databaseStatus();
+  if (!before.reachable) {
+    return NextResponse.json(
+      { ok: false, error: `Database unreachable: ${before.error ?? 'unknown error'}` },
+      { status: 502 },
+    );
+  }
+
+  const access = decideMigrateAccess({
+    secret: process.env.CRON_SECRET,
+    authorization: request.headers.get('authorization'),
+    migrated: before.migrated,
+  });
+
+  if (access === 'denied') {
+    return NextResponse.json(
+      { ok: false, error: 'The schema already exists. Re-running it requires CRON_SECRET.' },
+      { status: 401 },
+    );
+  }
+
   try {
     await applySchema();
-    const status = await databaseStatus();
-    return NextResponse.json({ ok: true, status });
+    return NextResponse.json({ ok: true, access, status: await databaseStatus() });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : 'Migration failed.' },
