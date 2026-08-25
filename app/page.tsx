@@ -150,6 +150,23 @@ function SetupNotice({ status }: { status: Awaited<ReturnType<typeof databaseSta
     );
   }
 
+  if (!status.emptyDatabase) {
+    return (
+      <div className="notice" style={{ marginTop: 22 }}>
+        <strong>The database is behind this version of the app.</strong> Reading{' '}
+        <code>{status.source}</code>; {status.missingTables.length} table
+        {status.missingTables.length === 1 ? ' is' : 's are'} missing:
+        <div className="mono" style={{ fontSize: 12, margin: '8px 0' }}>
+          {status.missingTables.join(', ')}
+        </div>
+        The migration only adds what is absent, so running it against a live database is safe.
+        Use the button below, or{' '}
+        <code className="mono">POST /api/admin/migrate</code> with your{' '}
+        <code>CRON_SECRET</code> if one is set.
+      </div>
+    );
+  }
+
   return (
     <div className="notice" style={{ marginTop: 22 }}>
       <strong>Database connected, but the schema has not been created yet.</strong>{' '}

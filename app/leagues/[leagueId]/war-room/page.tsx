@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getLeague } from '@/lib/db/queries';
+import { databaseStatus } from '@/lib/db/client';
+import { SchemaNotice } from '@/app/schema-notice';
 import { scoringProfile } from '@/lib/compute/scoring';
 import { assembleWarRoom } from '@/lib/warroom/assemble';
 import { LeagueNav } from '../nav';
@@ -27,8 +29,24 @@ export default async function WarRoomPage({
   const league = await getLeague(leagueId);
   if (!league) notFound();
 
-  const room = await assembleWarRoom(league);
   const profile = scoringProfile(league.scoring_settings, league.roster_positions);
+
+  // The war room reads tables that arrived later than the rest of the app, so a
+  // database one deploy behind would otherwise throw "relation does not exist"
+  // and render a bare 500. Check first, and say which tables are missing.
+  const status = await databaseStatus();
+  if (!status.migrated) {
+    return (
+      <main>
+        <h1>War room</h1>
+        <p className="lede">{league.name}</p>
+        <LeagueNav leagueId={leagueId} />
+        <SchemaNotice missingTables={status.missingTables} leagueScoped />
+      </main>
+    );
+  }
+
+  const room = await assembleWarRoom(league);
 
   const hideTaken = hide !== 'off';
   const visible = room.board.players

@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getLeague, listManagers, listRosters, weekProjections } from '@/lib/db/queries';
+import { databaseStatus } from '@/lib/db/client';
+import { SchemaNotice } from '@/app/schema-notice';
 import { currentState, fetchWeek } from '@/lib/jobs/ingest';
 import { fallbackProjection } from '@/lib/jobs/odds';
 import { playerDictionary } from '@/lib/sleeper/players';
@@ -27,6 +29,18 @@ export default async function LineupPage({
 
   const league = await getLeague(leagueId);
   if (!league) notFound();
+
+  const status = await databaseStatus();
+  if (!status.migrated) {
+    return (
+      <main>
+        <h1>Start / sit</h1>
+        <p className="lede">{league.name}</p>
+        <LeagueNav leagueId={leagueId} />
+        <SchemaNotice missingTables={status.missingTables} leagueScoped />
+      </main>
+    );
+  }
 
   let week: number;
   let error: string | null = null;

@@ -169,10 +169,22 @@ export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Pr
   }
 }
 
-/** Tables the app cannot run without. Used to tell "empty" from "migrated". */
+/**
+ * Every table the app queries.
+ *
+ * This list has to stay complete, and the cost of it drifting is not
+ * theoretical: when `draft_picks` and `watchlist_items` were added to the schema
+ * but not to this list, a database migrated before them reported itself fully
+ * migrated and then threw "relation does not exist" the moment the war room
+ * loaded. The health check has to know about a table for the setup flow to be
+ * able to tell anyone it is missing.
+ *
+ * If you add a table to the schema, add it here in the same commit.
+ */
 const REQUIRED_TABLES = [
-  'leagues', 'managers', 'rosters', 'matchups',
-  'odds_snapshots', 'stat_packets', 'storylines', 'awards', 'reports',
+  'leagues', 'managers', 'rosters', 'players', 'player_week_stats', 'projections',
+  'matchups', 'odds_snapshots', 'stat_packets', 'storylines', 'awards', 'reports',
+  'draft_tendencies', 'draft_picks', 'watchlist_items',
 ];
 
 export type DatabaseStatus = {
@@ -185,6 +197,12 @@ export type DatabaseStatus = {
   error: string | null;
   /** Names of database-shaped variables present in the runtime. Never values. */
   seenEnvVars: string[];
+  /**
+   * True when none of the required tables exist. Distinguishes a fresh database
+   * from one that is merely behind, which need different words and carry very
+   * different risk if migrated by an anonymous caller.
+   */
+  emptyDatabase: boolean;
 };
 
 /**
@@ -201,7 +219,7 @@ export async function databaseStatus(): Promise<DatabaseStatus> {
     return {
       configured: false, source: null, reachable: false,
       migrated: false, missingTables: REQUIRED_TABLES, error: null,
-      seenEnvVars: databaseEnvVarNames(),
+      seenEnvVars: databaseEnvVarNames(), emptyDatabase: true,
     };
   }
 
@@ -222,6 +240,7 @@ export async function databaseStatus(): Promise<DatabaseStatus> {
       missingTables: missing,
       error: null,
       seenEnvVars: databaseEnvVarNames(),
+      emptyDatabase: present.size === 0,
     };
   } catch (error) {
     return {
@@ -232,6 +251,7 @@ export async function databaseStatus(): Promise<DatabaseStatus> {
       missingTables: REQUIRED_TABLES,
       error: error instanceof Error ? error.message : 'Could not reach the database.',
       seenEnvVars: databaseEnvVarNames(),
+      emptyDatabase: false,
     };
   }
 }

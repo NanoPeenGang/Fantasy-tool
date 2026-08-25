@@ -34,12 +34,17 @@ export async function POST(request: Request) {
   const access = decideMigrateAccess({
     secret: process.env.CRON_SECRET,
     authorization: request.headers.get('authorization'),
-    migrated: before.migrated,
+    emptyDatabase: before.emptyDatabase,
   });
 
   if (access === 'denied') {
     return NextResponse.json(
-      { ok: false, error: 'The schema already exists. Re-running it requires CRON_SECRET.' },
+      {
+        ok: false,
+        error:
+          'This database already has tables. Bringing it up to date requires CRON_SECRET.',
+        missingTables: before.missingTables,
+      },
       { status: 401 },
     );
   }

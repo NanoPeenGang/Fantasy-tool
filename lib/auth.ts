@@ -32,12 +32,16 @@ export type MigrateAccess = 'bootstrap' | 'authorized' | 'denied';
 /**
  * Who may create the schema.
  *
- * The bootstrap case is the interesting one: while the database has no schema,
- * the migration runs without a secret. That is a deliberate, bounded exception,
- * not an oversight. The only thing the call can do in that state is create empty
- * tables on an empty database — it cannot read anything, because there is
- * nothing to read, and it cannot destroy anything, because every statement is
- * additive. The window closes the instant it succeeds.
+ * The bootstrap case is the interesting one: while the database is completely
+ * empty, the migration runs without a secret. That is a deliberate, bounded
+ * exception, not an oversight. The only thing the call can do in that state is
+ * create empty tables on an empty database — it cannot read anything, because
+ * there is nothing to read, and it cannot destroy anything, because every
+ * statement is additive. The window closes the instant it succeeds.
+ *
+ * A *partially* migrated database — one behind a schema change — is deliberately
+ * not bootstrappable: it holds real data, so bringing it up to date is an
+ * ordinary admin write and takes the secret like any other.
  *
  * The alternative is worse: someone who has just attached a database and has not
  * yet set CRON_SECRET would have no way to finish setup from the browser, which
@@ -48,9 +52,10 @@ export type MigrateAccess = 'bootstrap' | 'authorized' | 'denied';
 export function decideMigrateAccess(params: {
   secret: string | undefined;
   authorization: string | null;
-  migrated: boolean;
+  /** True only when the database has none of the app's tables. */
+  emptyDatabase: boolean;
 }): MigrateAccess {
-  if (!params.migrated) return 'bootstrap';
+  if (params.emptyDatabase) return 'bootstrap';
   if (!params.secret) return 'authorized';
   return params.authorization === `Bearer ${params.secret}` ? 'authorized' : 'denied';
 }

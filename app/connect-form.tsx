@@ -97,7 +97,7 @@ export function ConnectForm({ setup }: { setup: SetupState }) {
 
         {setup === 'not_migrated' && (
           <button type="button" className="secondary" onClick={migrate} disabled={busy !== null}>
-            {busy === 'migrating' ? 'Creating schema…' : 'Create the schema'}
+            {busy === 'migrating' ? 'Running migration…' : 'Create / update the schema'}
           </button>
         )}
       </div>

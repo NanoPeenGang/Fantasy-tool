@@ -99,7 +99,7 @@ Then open http://localhost:3000 and paste a Sleeper league ID — the long numbe
 in your league's Sleeper URL.
 
 ```bash
-npm test          # 314 tests, no database or API key needed
+npm test          # 316 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
 
@@ -131,9 +131,17 @@ GET /api/health
 ```
 
 It reports whether a connection string was found (and which variable supplied
-it), whether the database is reachable, and whether the schema exists. It returns
-503 until all three are true, and names the single next step. It reveals no
-secrets — only the *name* of the variable a value came from.
+it), whether the database is reachable, and whether every table the app queries
+exists. It returns 503 until all three are true, and names the single next step.
+It reveals no secrets — only the *name* of the variable a value came from.
+
+**Schema changes need the migration re-run.** A database migrated before a
+release that added tables is *behind*, not broken, and the app now says exactly
+that and names the missing tables rather than throwing "relation does not exist"
+into a blank 500. The list of required tables lives in `lib/db/client.ts` and has
+to stay complete: when it drifted, a database missing `draft_picks` and
+`watchlist_items` reported itself fully migrated and then crashed the war room.
+**Add a table to the schema and to that list in the same commit.**
 
 The setup banner on the home page offers a **Create the schema** button that does
 this in one click. Or, from a shell:
@@ -146,12 +154,13 @@ curl -X POST https://your-app.vercel.app/api/admin/migrate \
 Idempotent and additive — it creates tables and types that do not exist and
 touches nothing else, so re-running it is safe.
 
-**On the bootstrap window:** while the database has no schema this route runs
-without a secret, and the button relies on that. It is a deliberate, bounded
+**On the bootstrap window:** while the database is completely empty this route
+runs without a secret, and the button relies on that. It is a deliberate, bounded
 exception — in that state the call can only create empty tables on an empty
 database, since there is nothing to read and every statement is additive — and
-the window closes the instant it succeeds. Afterwards `CRON_SECRET` is required
-like any other admin write. Without the exception, anyone who attached a
+the window closes the instant any table exists. A database that is merely
+*behind* a schema change holds real data, so bringing it up to date is an
+ordinary admin write and takes `CRON_SECRET` like any other. Without the exception, anyone who attached a
 database before setting a secret would have no way to finish setup from the
 browser, which is the dead end this route exists to remove.
 
@@ -573,7 +582,7 @@ lib/
   lineup/      week-to-week start/sit advice
   jobs/        ingestion, packet build, odds tick
   db/          schema (as TS), pool, repository, status probe
-tests/         314 unit tests + 35 DB integration tests, fixtures under tests/fixtures
+tests/         316 unit tests + 35 DB integration tests, fixtures under tests/fixtures
 ```
 
 Everything in `lib/compute` is a pure function over plain data — no database, no
