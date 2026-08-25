@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.ts",
+    "test:db": "vitest run tests/db.integration.test.ts",
     "check": "npm run typecheck && npm run test"
   },
   "dependencies": {

@@ -91,7 +91,7 @@ way; keep it that way.
 ```bash
 npm install
 cp .env.example .env.local     # fill in DATABASE_URL at minimum
-npm run db:migrate             # applies lib/db/schema.sql, idempotent
+npm run db:migrate             # creates the schema, idempotent
 npm run dev
 ```
 
@@ -102,17 +102,64 @@ in your league's Sleeper URL.
 npm test          # 236 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
+
+# The repository layer against a real Postgres. Skips without a database.
+TEST_DATABASE_URL=postgres://... npm run test:db
 ```
 
 ### Environment
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | yes | Postgres. Everything that persists needs it. |
+| `DATABASE_URL` | yes | Postgres. `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED` and `POSTGRES_URL_NON_POOLING` are also accepted. |
 | `ANTHROPIC_API_KEY` | for reports | The recap and AAR narrative |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | recommended | Falls back to an in-process map, which is wrong for serverless |
 | `CRON_SECRET` | in production | `/api/cron/*` is open without it |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` | optional | Auth is bypassed entirely when unset |
+
+### Setting up the database
+
+**Attaching a database and creating its schema are two separate steps**, and
+nothing about the first hints that the second is outstanding. A freshly attached
+Neon or Vercel Postgres database is empty: the connection works, every query
+fails, and the app has no leagues because it cannot have any.
+
+Check which state you are in at any time:
+
+```
+GET /api/health
+```
+
+It reports whether a connection string was found (and which variable supplied
+it), whether the database is reachable, and whether the schema exists. It returns
+503 until all three are true, and names the single next step. It reveals no
+secrets — only the *name* of the variable a value came from.
+
+To create the schema on a deployed app, where there is no shell to run
+`npm run db:migrate` from:
+
+```bash
+curl -X POST https://your-app.vercel.app/api/admin/migrate \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Idempotent and additive — it creates tables and types that do not exist and
+touches nothing else, so re-running it is safe. It is guarded by `CRON_SECRET`;
+if you have not set one yet, the route is open, which is another reason to set
+it.
+
+The schema lives in `lib/db/schema.ts` as a string rather than a `.sql` file, so
+that the migration can run from a serverless function without depending on file
+tracing or the runtime working directory. It is the single source of truth.
+
+**On connection-string names:** the Vercel and Neon integrations do not agree on
+one, and which you get depends on how the database was attached. The app accepts
+`DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED`
+and `POSTGRES_URL_NON_POOLING`, in that order. Reading only `DATABASE_URL` meant
+a correctly-connected database could report itself as "not configured".
+
+Note that attaching a database in Vercel does not update a running deployment —
+**redeploy** so the new environment variable is picked up.
 
 ### Deploying
 
@@ -412,8 +459,8 @@ lib/
   aar/         after-action report builder
   warroom/     draft tendency mining, run detection
   jobs/        ingestion, packet build, odds tick
-  db/          schema.sql, pool, repository
-tests/         234 tests, fixtures under tests/fixtures
+  db/          schema (as TS), pool, repository, status probe
+tests/         236 unit tests + 26 DB integration tests, fixtures under tests/fixtures
 ```
 
 Everything in `lib/compute` is a pure function over plain data — no database, no
@@ -496,7 +543,13 @@ with a full week designed so every metric has an unambiguous expected value: a
 manager who loses to his own bench, a heist from a 6% low-water mark, a low score,
 and a manager who started a player already ruled out.
 
-Three bugs were found by writing those tests and fixed in the code rather than in
-the assertions. They are called out at the relevant places above, because each one
+The repository layer is covered separately by `tests/db.integration.test.ts`,
+which runs against a real Postgres and skips without one. Typechecking a query
+string proves nothing about whether it parses, whether the column exists, or
+whether an `ON CONFLICT` target matches a real constraint — so that SQL went
+unexercised until there was a database to run it against.
+
+Three bugs were found by writing the compute tests and fixed in the code rather
+than in the assertions. They are called out at the relevant places above, because each one
 was a case of a metric being measured against the side of the matchup where it is
 constant by construction — a mistake worth recognising the shape of.

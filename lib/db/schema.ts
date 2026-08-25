@@ -1,4 +1,15 @@
--- LeagueOps schema. Applied by scripts/migrate.ts, which runs this file in a
+/**
+ * The schema, as a string rather than a .sql file on disk.
+ *
+ * It lives here so the migration can run from a deployed serverless function.
+ * A file read would depend on the .sql being traced into the bundle and on the
+ * working directory at runtime; a module import is simply always there. This is
+ * the single source of truth — there is no schema.sql any more.
+ *
+ * Every statement is idempotent, so applying this to an existing database is
+ * safe and it doubles as the migration.
+ */
+export const SCHEMA_SQL = `-- LeagueOps schema. Applied by scripts/migrate.ts, which runs this file in a
 -- single transaction; every statement is idempotent so it doubles as the
 -- migration for an existing database.
 
@@ -193,3 +204,4 @@ CREATE INDEX IF NOT EXISTS player_week_stats_week ON player_week_stats (season, 
 CREATE INDEX IF NOT EXISTS projections_week ON projections (season, week, source);
 CREATE INDEX IF NOT EXISTS matchups_league_week ON matchups (league_id, week);
 CREATE INDEX IF NOT EXISTS storylines_live ON storylines (league_id, season, status);
+`;

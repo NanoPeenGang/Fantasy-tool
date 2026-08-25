@@ -1,13 +1,17 @@
 import Link from 'next/link';
-import { isDatabaseConfigured } from '@/lib/db/client';
+import { databaseStatus } from '@/lib/db/client';
 import { listLeagues } from '@/lib/db/queries';
 import { ConnectForm } from './connect-form';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const configured = isDatabaseConfigured();
-  const leagues = configured ? await listLeagues().catch(() => []) : [];
+  // Probe before listing. The previous version swallowed the query error, so a
+  // connected-but-unmigrated database looked identical to one with no leagues
+  // in it — which is exactly the state a freshly attached Neon database is in.
+  const status = await databaseStatus();
+  const ready = status.configured && status.reachable && status.migrated;
+  const leagues = ready ? await listLeagues().catch(() => []) : [];
 
   return (
     <main>
@@ -18,15 +22,10 @@ export default async function HomePage() {
         recap you can paste into the league chat.
       </p>
 
-      {!configured && (
-        <div className="notice" style={{ marginTop: 22 }}>
-          <strong>No database configured.</strong> Set <code>DATABASE_URL</code> and run{' '}
-          <code>npm run db:migrate</code> before connecting a league. See the README.
-        </div>
-      )}
+      {!ready && <SetupNotice status={status} />}
 
       <div className="card" style={{ marginTop: 22, maxWidth: 460 }}>
-        <ConnectForm disabled={!configured} />
+        <ConnectForm disabled={!ready} />
       </div>
 
       {leagues.length > 0 && (
@@ -83,5 +82,63 @@ export default async function HomePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * The setup banner. Each state names the one action that unblocks it — "no
+ * database" and "database connected but empty" need completely different things
+ * done, and collapsing them into one message is how someone ends up re-checking
+ * a connection string that was correct all along.
+ */
+function SetupNotice({ status }: { status: Awaited<ReturnType<typeof databaseStatus>> }) {
+  if (!status.configured) {
+    return (
+      <div className="notice" style={{ marginTop: 22 }}>
+        <strong>No database attached.</strong> Add a Postgres database (Neon or Vercel
+        Postgres) to the project, then redeploy so the app picks up the environment
+        variable. Locally, set <code>DATABASE_URL</code> in <code>.env.local</code>.
+      </div>
+    );
+  }
+
+  if (!status.reachable) {
+    return (
+      <div className="notice" style={{ marginTop: 22 }}>
+        <strong>Database attached but unreachable.</strong> Reading{' '}
+        <code>{status.source}</code>. {status.error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="notice" style={{ marginTop: 22 }}>
+      <strong>Database connected, but the schema has not been created yet.</strong>{' '}
+      Reading <code>{status.source}</code>; {status.missingTables.length} table
+      {status.missingTables.length === 1 ? ' is' : 's are'} missing. Attaching a database
+      and creating its schema are two separate steps.
+      <div style={{ marginTop: 10 }}>
+        Run the migration once:
+        <pre
+          className="mono"
+          style={{
+            margin: '6px 0 0',
+            padding: '10px 12px',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            overflowX: 'auto',
+            fontSize: 12,
+          }}
+        >
+          curl -X POST https://your-app.vercel.app/api/admin/migrate \\{'\n'}
+          {'  '}-H &quot;Authorization: Bearer $CRON_SECRET&quot;
+        </pre>
+        <span className="faint" style={{ fontSize: 12 }}>
+          Or <code>npm run db:migrate</code> locally. It is idempotent — safe to re-run.
+          Check <a href="/api/health">/api/health</a> for the current state.
+        </span>
+      </div>
+    </div>
   );
 }

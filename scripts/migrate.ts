@@ -1,23 +1,30 @@
 /**
- * Applies lib/db/schema.sql in one transaction. Every statement in that file is
- * idempotent, so this is safe to re-run against an existing database.
+ * Apply the schema from a shell. The same operation is available in a deployed
+ * environment at POST /api/admin/migrate, which is what you want once the
+ * database lives in Vercel or Neon rather than on your laptop.
  *
  *   npm run db:migrate
  */
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { Client } from 'pg';
+import { SCHEMA_SQL } from '../lib/db/schema';
+
+const CONNECTION_ENV_VARS = [
+  'DATABASE_URL',
+  'POSTGRES_URL',
+  'POSTGRES_PRISMA_URL',
+  'DATABASE_URL_UNPOOLED',
+  'POSTGRES_URL_NON_POOLING',
+];
 
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
+  const name = CONNECTION_ENV_VARS.find((key) => process.env[key]);
+  const connectionString = name ? process.env[name] : undefined;
+
   if (!connectionString) {
-    console.error('DATABASE_URL is not set.');
+    console.error(`No connection string. Set one of: ${CONNECTION_ENV_VARS.join(', ')}`);
     process.exit(1);
   }
-
-  const here = dirname(fileURLToPath(import.meta.url));
-  const sql = await readFile(join(here, '..', 'lib', 'db', 'schema.sql'), 'utf8');
+  console.log(`Using ${name}`);
 
   const client = new Client({
     connectionString,
@@ -26,7 +33,7 @@ async function main() {
   await client.connect();
   try {
     await client.query('BEGIN');
-    await client.query(sql);
+    await client.query(SCHEMA_SQL);
     await client.query('COMMIT');
     console.log('Schema applied.');
   } catch (error) {
