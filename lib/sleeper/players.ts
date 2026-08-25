@@ -33,12 +33,16 @@ export function reducePlayer(id: string, raw: SleeperPlayer): PlayerLite | null 
     '';
   if (!name) return null;
 
+  // Sleeper sends bye_week as a number, a string, or not at all.
+  const bye = raw.bye_week === null || raw.bye_week === undefined ? null : Number(raw.bye_week);
+
   return {
     id,
     name,
     position,
     team: raw.team ?? null,
     injury_status: raw.injury_status ?? null,
+    bye_week: Number.isFinite(bye) && (bye as number) > 0 ? (bye as number) : null,
   };
 }
 
@@ -101,7 +105,7 @@ export async function resolvePlayers(ids: Iterable<string>): Promise<Record<stri
   for (const id of ids) {
     const player = dict[id];
     if (player) out[id] = player;
-    else out[id] = { id, name: id, position: 'UNK', team: null, injury_status: null };
+    else out[id] = { id, name: id, position: 'UNK', team: null, injury_status: null, bye_week: null };
   }
   return out;
 }

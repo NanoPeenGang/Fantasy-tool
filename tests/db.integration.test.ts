@@ -361,11 +361,123 @@ describeDb('repository layer against a real Postgres', () => {
     });
   });
 
+
+  describe('draft history', () => {
+    it('stores picks keyed by draft and pick number', async () => {
+      await queries.upsertDraftPicks(leagueId, [
+        {
+          draftId: 'draft_2025', season: '2025', pickNo: 1, round: 1,
+          playerId: 'p1', position: 'RB', nflTeam: 'BUF', pickedBy: 'u1', rosterId: 1,
+        },
+        {
+          draftId: 'draft_2025', season: '2025', pickNo: 2, round: 1,
+          playerId: 'p2', position: 'WR', nflTeam: 'PHI', pickedBy: 'u2', rosterId: 2,
+        },
+      ]);
+      const picks = await queries.listDraftPicks(leagueId);
+      expect(picks).toHaveLength(2);
+      expect(picks[0]?.player_id).toBe('p1');
+    });
+
+    it('re-importing overwrites rather than duplicating', async () => {
+      await queries.upsertDraftPicks(leagueId, [
+        {
+          draftId: 'draft_2025', season: '2025', pickNo: 1, round: 1,
+          playerId: 'p1_corrected', position: 'RB', nflTeam: 'BUF', pickedBy: 'u1', rosterId: 1,
+        },
+      ]);
+      const picks = await queries.listDraftPicks(leagueId);
+      expect(picks).toHaveLength(2);
+      expect(picks.find((p) => p.pick_no === 1)?.player_id).toBe('p1_corrected');
+    });
+
+    it('lists the seasons it has history for', async () => {
+      await queries.upsertDraftPicks(leagueId, [
+        {
+          draftId: 'draft_2024', season: '2024', pickNo: 1, round: 1,
+          playerId: 'p9', position: 'TE', nflTeam: 'SF', pickedBy: 'u1', rosterId: 1,
+        },
+      ]);
+      expect(await queries.draftSeasons(leagueId)).toEqual(['2024', '2025']);
+    });
+  });
+
+  describe('watchlist', () => {
+    it('adds a player to a league-wide list', async () => {
+      await queries.addToWatchlist({
+        leagueId, managerId: null, playerId: 'p1', note: 'target round 4', priority: 10,
+      });
+      const items = await queries.listWatchlist(leagueId);
+      expect(items).toHaveLength(1);
+      expect(items[0]?.note).toBe('target round 4');
+    });
+
+    /** The unique constraint spans a nullable column, which is easy to get wrong. */
+    it('updates rather than duplicating on a repeat add', async () => {
+      await queries.addToWatchlist({
+        leagueId, managerId: null, playerId: 'p1', note: 'changed my mind', priority: 1,
+      });
+      const items = await queries.listWatchlist(leagueId);
+      expect(items).toHaveLength(1);
+      expect(items[0]?.note).toBe('changed my mind');
+      expect(items[0]?.priority).toBe(1);
+    });
+
+    it('keeps a manager list separate from the league list', async () => {
+      const managers = await queries.listManagers(leagueId);
+      await queries.addToWatchlist({
+        leagueId, managerId: managers[0]!.id, playerId: 'p1', note: 'mine', priority: 5,
+      });
+      expect(await queries.listWatchlist(leagueId)).toHaveLength(2);
+      expect(await queries.listWatchlist(leagueId, null)).toHaveLength(1);
+      expect(await queries.listWatchlist(leagueId, managers[0]!.id)).toHaveLength(1);
+    });
+
+    it('sorts by priority', async () => {
+      await queries.addToWatchlist({ leagueId, managerId: null, playerId: 'p2', priority: 99 });
+      const items = await queries.listWatchlist(leagueId, null);
+      expect(items.map((i) => i.player_id)).toEqual(['p1', 'p2']);
+    });
+
+    it('removes only the intended row', async () => {
+      await queries.removeFromWatchlist(leagueId, 'p1', null);
+      expect(await queries.listWatchlist(leagueId, null)).toHaveLength(1);
+      // The manager-scoped entry for the same player survives.
+      const managers = await queries.listManagers(leagueId);
+      expect(await queries.listWatchlist(leagueId, managers[0]!.id)).toHaveLength(1);
+    });
+  });
+
+  describe('draft tendencies', () => {
+    it('stores and updates a tendency in place', async () => {
+      const managers = await queries.listManagers(leagueId);
+      await queries.saveTendencies(leagueId, [
+        {
+          managerId: managers[0]!.id, metricKey: 'first_qb_round',
+          value: 3, sampleSize: 4, detail: { rounds: [3, 3, 3, 3] },
+        },
+      ]);
+      let rows = await queries.listTendencies(leagueId);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.value)).toBe(3);
+
+      await queries.saveTendencies(leagueId, [
+        {
+          managerId: managers[0]!.id, metricKey: 'first_qb_round',
+          value: 4, sampleSize: 5, detail: {},
+        },
+      ]);
+      rows = await queries.listTendencies(leagueId);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.value)).toBe(4);
+    });
+  });
+
   describe('cascade', () => {
     it('removes every dependent row when a league is deleted', async () => {
       await db.query('DELETE FROM leagues WHERE id = $1', [leagueId]);
 
-      for (const table of ['managers', 'rosters', 'matchups', 'stat_packets', 'awards', 'storylines', 'reports']) {
+      for (const table of ['managers', 'rosters', 'matchups', 'stat_packets', 'awards', 'storylines', 'reports', 'draft_picks', 'watchlist_items', 'draft_tendencies']) {
         const rows = await db.query<{ count: string }>(
           `SELECT count(*) FROM ${table} WHERE league_id = $1`,
           [leagueId],

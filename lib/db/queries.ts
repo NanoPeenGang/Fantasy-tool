@@ -519,3 +519,167 @@ export async function upsertProjections(
     );
   }
 }
+
+// --- draft history ---------------------------------------------------------
+
+export type DraftPickRow = {
+  league_id: string;
+  draft_id: string;
+  season: string;
+  pick_no: number;
+  round: number;
+  player_id: string;
+  position: string;
+  nfl_team: string | null;
+  picked_by: string | null;
+  roster_id: number | null;
+};
+
+export async function upsertDraftPicks(
+  leagueId: string,
+  picks: {
+    draftId: string;
+    season: string;
+    pickNo: number;
+    round: number;
+    playerId: string;
+    position: string;
+    nflTeam: string | null;
+    pickedBy: string | null;
+    rosterId: number | null;
+  }[],
+): Promise<number> {
+  let written = 0;
+  for (const pick of picks) {
+    await query(
+      `INSERT INTO draft_picks
+         (league_id, draft_id, season, pick_no, round, player_id, position, nfl_team, picked_by, roster_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (draft_id, pick_no) DO UPDATE SET
+         player_id = EXCLUDED.player_id,
+         position = EXCLUDED.position,
+         nfl_team = EXCLUDED.nfl_team,
+         picked_by = EXCLUDED.picked_by,
+         roster_id = EXCLUDED.roster_id`,
+      [
+        leagueId, pick.draftId, pick.season, pick.pickNo, pick.round,
+        pick.playerId, pick.position, pick.nflTeam, pick.pickedBy, pick.rosterId,
+      ],
+    );
+    written += 1;
+  }
+  return written;
+}
+
+export async function listDraftPicks(leagueId: string): Promise<DraftPickRow[]> {
+  return query<DraftPickRow>(
+    'SELECT * FROM draft_picks WHERE league_id = $1 ORDER BY season, pick_no',
+    [leagueId],
+  );
+}
+
+export async function draftSeasons(leagueId: string): Promise<string[]> {
+  const rows = await query<{ season: string }>(
+    'SELECT DISTINCT season FROM draft_picks WHERE league_id = $1 ORDER BY season',
+    [leagueId],
+  );
+  return rows.map((row) => row.season);
+}
+
+// --- watchlist -------------------------------------------------------------
+
+export type WatchlistRow = {
+  id: string;
+  league_id: string;
+  manager_id: string | null;
+  player_id: string;
+  note: string | null;
+  priority: number;
+};
+
+export async function listWatchlist(leagueId: string, managerId?: string | null): Promise<WatchlistRow[]> {
+  if (managerId === undefined) {
+    return query<WatchlistRow>(
+      'SELECT * FROM watchlist_items WHERE league_id = $1 ORDER BY priority, created_at',
+      [leagueId],
+    );
+  }
+  return query<WatchlistRow>(
+    `SELECT * FROM watchlist_items
+     WHERE league_id = $1 AND manager_id IS NOT DISTINCT FROM $2
+     ORDER BY priority, created_at`,
+    [leagueId, managerId],
+  );
+}
+
+export async function addToWatchlist(input: {
+  leagueId: string;
+  managerId: string | null;
+  playerId: string;
+  note?: string | null;
+  priority?: number;
+}): Promise<WatchlistRow> {
+  // Two conflict targets, because uniqueness is enforced by two partial indexes
+  // — see the schema for why a single constraint cannot work across a nullable
+  // manager_id.
+  const conflict =
+    input.managerId === null
+      ? '(league_id, player_id) WHERE manager_id IS NULL'
+      : '(league_id, manager_id, player_id) WHERE manager_id IS NOT NULL';
+
+  const row = await queryOne<WatchlistRow>(
+    `INSERT INTO watchlist_items (league_id, manager_id, player_id, note, priority)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT ${conflict} DO UPDATE SET
+       note = EXCLUDED.note, priority = EXCLUDED.priority
+     RETURNING *`,
+    [input.leagueId, input.managerId, input.playerId, input.note ?? null, input.priority ?? 100],
+  );
+  if (!row) throw new Error('Failed to add to watchlist');
+  return row;
+}
+
+export async function removeFromWatchlist(
+  leagueId: string,
+  playerId: string,
+  managerId: string | null,
+): Promise<void> {
+  await query(
+    `DELETE FROM watchlist_items
+     WHERE league_id = $1 AND player_id = $2 AND manager_id IS NOT DISTINCT FROM $3`,
+    [leagueId, playerId, managerId],
+  );
+}
+
+// --- draft tendencies ------------------------------------------------------
+
+export async function saveTendencies(
+  leagueId: string,
+  tendencies: { managerId: string; metricKey: string; value: number; sampleSize: number; detail: Record<string, unknown> }[],
+): Promise<void> {
+  for (const tendency of tendencies) {
+    await query(
+      `INSERT INTO draft_tendencies (league_id, manager_id, metric_key, value, sample_size, detail, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, now())
+       ON CONFLICT (league_id, manager_id, metric_key) DO UPDATE SET
+         value = EXCLUDED.value,
+         sample_size = EXCLUDED.sample_size,
+         detail = EXCLUDED.detail,
+         updated_at = now()`,
+      [
+        leagueId, tendency.managerId, tendency.metricKey,
+        tendency.value, tendency.sampleSize, JSON.stringify(tendency.detail),
+      ],
+    );
+  }
+}
+
+export async function listTendencies(leagueId: string) {
+  return query<{
+    manager_id: string;
+    metric_key: string;
+    value: string;
+    sample_size: number;
+    detail: Record<string, unknown>;
+  }>('SELECT * FROM draft_tendencies WHERE league_id = $1', [leagueId]);
+}

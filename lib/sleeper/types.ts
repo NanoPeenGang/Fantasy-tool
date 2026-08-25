@@ -97,6 +97,7 @@ export type SleeperPlayer = {
   injury_status?: string | null;
   status?: string | null;
   active?: boolean;
+  bye_week?: number | string | null;
 };
 
 export type SleeperDraft = {
@@ -137,4 +138,6 @@ export type PlayerLite = {
   position: string;
   team: string | null;
   injury_status: string | null;
+  /** Sleeper reports this inconsistently, so it is optional everywhere. */
+  bye_week: number | null;
 };

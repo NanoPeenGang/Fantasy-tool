@@ -204,4 +204,53 @@ CREATE INDEX IF NOT EXISTS player_week_stats_week ON player_week_stats (season, 
 CREATE INDEX IF NOT EXISTS projections_week ON projections (season, week, source);
 CREATE INDEX IF NOT EXISTS matchups_league_week ON matchups (league_id, week);
 CREATE INDEX IF NOT EXISTS storylines_live ON storylines (league_id, season, status);
+
+CREATE TABLE IF NOT EXISTS draft_picks (
+  league_id   uuid NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  draft_id    text NOT NULL,
+  season      text NOT NULL,
+  pick_no     integer NOT NULL,
+  round       integer NOT NULL,
+  player_id   text NOT NULL,
+  position    text NOT NULL,
+  nfl_team    text,
+  -- Sleeper user id of whoever made the pick. Kept raw so a manager who leaves
+  -- the league does not take their draft history with them.
+  picked_by   text,
+  roster_id   integer,
+  PRIMARY KEY (draft_id, pick_no)
+);
+
+CREATE INDEX IF NOT EXISTS draft_picks_league ON draft_picks (league_id, season);
+CREATE INDEX IF NOT EXISTS draft_picks_player ON draft_picks (league_id, player_id);
+
+CREATE TABLE IF NOT EXISTS watchlist_items (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  league_id  uuid NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  -- Null means a league-wide list rather than one manager's.
+  manager_id uuid REFERENCES managers(id) ON DELETE CASCADE,
+  player_id  text NOT NULL,
+  note       text,
+  -- Lower sorts first. The order you would actually take them in.
+  priority   integer NOT NULL DEFAULT 100,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Uniqueness across a nullable column needs two partial indexes, not one plain
+-- UNIQUE. A table constraint over (league_id, manager_id, player_id) silently
+-- does nothing for the league-wide rows, because NULL is never equal to NULL in
+-- SQL: every insert looks new, ON CONFLICT never matches, and the list fills up
+-- with duplicates. Splitting the two cases makes each one actually unique.
+DO $$ BEGIN
+  ALTER TABLE watchlist_items
+    DROP CONSTRAINT IF EXISTS watchlist_items_league_id_manager_id_player_id_key;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS watchlist_unique_manager
+  ON watchlist_items (league_id, manager_id, player_id) WHERE manager_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS watchlist_unique_league
+  ON watchlist_items (league_id, player_id) WHERE manager_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS watchlist_league ON watchlist_items (league_id, priority);
 `;

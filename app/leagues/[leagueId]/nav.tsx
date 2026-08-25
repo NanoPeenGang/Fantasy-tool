@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const TABS = [
   { href: '', label: 'Dashboard' },
   { href: '/odds', label: 'Odds board' },
+  { href: '/lineup', label: 'Start / sit' },
   { href: '/report', label: "Commissioner's Report" },
   { href: '/war-room', label: 'War room' },
 ];

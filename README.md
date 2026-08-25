@@ -99,7 +99,7 @@ Then open http://localhost:3000 and paste a Sleeper league ID — the long numbe
 in your league's Sleeper URL.
 
 ```bash
-npm test          # 268 tests, no database or API key needed
+npm test          # 314 tests, no database or API key needed
 npm run typecheck
 npm run check     # both
 
@@ -466,6 +466,94 @@ email (HTML), Discord (embeds, 25-field and 1024-character caps respected), Slac
 
 ---
 
+## The war room
+
+Draft prep and week-to-week lineup help, both built on the same solver.
+
+### Where the board's ranking comes from
+
+Sleeper publishes no ADP endpoint, so a board needs a value source and there are
+only two honest ones. Both are supported and they stack:
+
+1. **Projections**, imported to `POST /api/leagues/{id}/projections` with
+   `week: 0` for season-long totals. Ranked on **value over replacement**, not
+   raw points — twelve points from a quarterback in a one-QB league is worth far
+   less than twelve from a flex, and a raw ranking hides that completely.
+2. **This league's own draft history**, chained back through
+   `previous_league_id` by `POST /api/leagues/{id}/draft/import`. Free, no
+   vendor, and arguably the better number: value is relative to the room you are
+   drafting in, not to a national consensus that does not play in your league.
+
+With neither, the board says so rather than inventing a ranking.
+
+### Tier cliffs
+
+Ordering within a tier is noise; the gap between tiers is the decision. The
+useful question at pick 9 is not "who is ranked ninth" but "does this tier run
+out before my next pick", so the board marks where the floor drops and by how
+much.
+
+Cliffs are found with a robust threshold — median gap plus a multiple of the
+median absolute deviation — because a mean-and-standard-deviation threshold gets
+dragged upward by the very cliffs it is looking for. Tiers are computed *per
+position*: a cross-positional tier tells you nothing about whether to take a
+running back now.
+
+### Roster construction
+
+Positional needs weight the board without dominating it — drafting for need in
+round two is how rosters end up bad everywhere at once, so need is a nudge scaled
+to the board's own spread rather than an override.
+
+**Bye-week collisions** are only reported when they would actually cost a
+starting slot. Two receivers sharing a bye is not a problem if a third is
+startable; flagging every shared bye is how a warning stops being read.
+
+### Knowing the room
+
+`draft_picks` stores every pick this league has ever made, keyed by Sleeper user
+id so a manager who leaves and returns keeps their history. From it:
+
+- **Manager tendencies** — the round each manager reaches for each position,
+  reach rate against ADP, positional bias, NFL-team homerism. Surfaced as live
+  warnings, gated on sample size, because a tendency drawn from one prior draft
+  is noise that costs trust.
+- **The positional market** — which round each position comes off the board in
+  *this* room. The number that survives roster turnover: the players change every
+  year, the fact that this league lets tight ends fall to round nine does not.
+- **Run detection** with survival odds, estimated from the recent window rather
+  than a base rate, because a run is exactly the situation where the base rate is
+  wrong.
+
+### Watchlists
+
+Star anyone on the board. A list can be league-wide or per manager, carries a
+note and a priority, and shows live draft status so a starred player who has just
+been taken is struck through rather than silently stale.
+
+One implementation note worth keeping: uniqueness is enforced by two **partial**
+indexes, not one table constraint. A `UNIQUE (league_id, manager_id, player_id)`
+silently does nothing for league-wide rows, because `NULL` is never equal to
+`NULL` in SQL — every insert looks new, `ON CONFLICT` never matches, and the list
+fills with duplicates. The integration suite caught exactly that.
+
+### Start / sit
+
+The prospective half of the optimal lineup solver: the same maximum-weight
+matching that grades a finished week, run forward on projections.
+
+Every call is priced in **win probability added**, not points. "+2.1 projected
+points" is not a decision; "+6.2% to win" is. The same swap is worth far more in
+a coin-flip matchup than in one already decided, and the tests pin that
+difference. Both simulations share a seed, so the number is the lineup change
+rather than Monte Carlo noise.
+
+Certainties are checked separately from recommendations: an empty slot, a starter
+on bye, a starter already ruled out. Those are not advice, they are things that
+cost a week.
+
+---
+
 ## Repository layout
 
 ```
@@ -481,10 +569,11 @@ lib/
                awards · transactions · packet          (pure, no DB or network)
   report/      heat · voices · prompts · generate · factcheck · delivery
   aar/         after-action report builder
-  warroom/     draft tendency mining, run detection
+  warroom/     board · tiers · ADP · roster needs · tendency mining · run detection
+  lineup/      week-to-week start/sit advice
   jobs/        ingestion, packet build, odds tick
   db/          schema (as TS), pool, repository, status probe
-tests/         268 unit tests + 26 DB integration tests, fixtures under tests/fixtures
+tests/         314 unit tests + 35 DB integration tests, fixtures under tests/fixtures
 ```
 
 Everything in `lib/compute` is a pure function over plain data — no database, no
@@ -502,7 +591,7 @@ to end, and it is worth preserving.
 | 3 — Commissioner's Report: three passes, heat, voices, storylines, delivery | done |
 | 4 — Odds engine: Monte Carlo with correlation, live tick, swing chart | done except the projection source |
 | 5 — AAR: per-matchup forensics over the odds snapshots | done |
-| 6 — War room: tendency mining and run detection | engine done, live board pending |
+| 6 — War room: board, tiers, watchlists, tendency mining, run detection, start/sit | done |
 
 ### What is not wired up
 
@@ -538,9 +627,10 @@ schedule source turns them on without touching the engine:
 
 Supplying these is the cheapest real accuracy win available to the live board.
 
-**The war room's live half.** Tendency mining, run detection and survival odds are
-implemented and tested; the live board, tier cliffs and 5-second draft sync are
-the offseason build.
+**The war room's 5-second draft sync.** The board reads live draft state on each
+page load and marks drafted players as taken, but does not yet poll on a timer
+during an active draft — refresh is manual. Everything it would poll for is
+already computed.
 
 **Clerk.** `middleware.ts` is a pass-through. Swap it for `clerkMiddleware()` and
 set the two keys to turn auth on.
