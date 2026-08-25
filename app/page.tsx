@@ -116,7 +116,10 @@ function SetupNotice({ status }: { status: Awaited<ReturnType<typeof databaseSta
           <>
             The runtime has <strong>no</strong> database variables at all — not even a
             partial one. That points at the variable never reaching this deployment rather
-            than at a naming mismatch.
+            than at a naming mismatch. Open <a href="/api/health">/api/health</a>: the{' '}
+            <code>deployment</code> block names the project, branch and commit that is
+            actually answering, which is the fastest way to spot that the dashboard you
+            configured and the app you are looking at are not the same project.
           </>
         )}
         <div style={{ marginTop: 10 }}>
